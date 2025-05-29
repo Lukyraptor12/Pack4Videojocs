@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+  <meta charset="UTF-8" />
+  <title>t__rex</title>
+  <style>
+    body { background:#222; color:#fff; font-family:sans-serif; text-align:center; }
+    #gameCanvas { background:#fff; display:block; margin:30px auto; border:2px solid #333; position:relative;}
+    #info { margin-top: 12px; }
+    #restartBtn { display:none; font-size:18px; margin: 20px; padding: 8px 24px;}
+    #shopBtn, #createBtn, #enllaçBtn {
+      position: absolute;
+      top: 20px;
+      font-size: 17px;
+      padding: 5px 18px;
+      border-radius: 7px;
+      border: none;
+      background: #333;
+      color: #fff;
+      transition: background 0.2s;
+    }
+    #shopBtn:active, #createBtn:active, #enllaçBtn:active { background: #444; }
+    #shopBtn { left: 40px; }
+    #createBtn { right: 40px; }
+    #enllaçBtn { left: 50%; transform: translateX(-50%); }
+    #shop { display:none; position: absolute; top: 80px; left: 50%; transform: translateX(-50%); background:#333; color:#fff; padding: 25px 40px; border-radius: 12px; z-index: 3;}
+    #editorPanel { display:none; background:#333; color:#fff; padding:10px 20px; border-radius:8px; margin:0 auto 12px; width:fit-content;}
+    #editorPanel select, #editorPanel button { font-size:16px; margin:3px;}
+    #codeInput { font-size:18px; padding:4px 10px; }
+    #closeShop { margin-top: 15px; }
+    #flyStatus { margin-top: 5px; font-weight: bold; }
+    /* Container for positioning buttons absolutely */
+    #topButtonsContainer {
+      width: 800px;
+      margin: 0 auto;
+      position: relative;
+      height: 60px;
+    }
+  </style>
+</head>
+<body>
+  <h2>t__rex</h2>
+  <div id="topButtonsContainer">
+    <button id="shopBtn" onclick="openShop()">Botiga</button>
+    <button id="enllaçBtn" onclick="window.open('https://gratis-4730852.webadorsite.com/', '_blank')">Enllaç</button>
+    <button id="createBtn" onclick="toggleEditor()">Crear</button>
+  </div>
+  <div id="shop">
+    <h3>Botiga</h3>
+    <div id="flyPotionDiv">
+      Poció per Volar (introduïu codi):
+      <input id="codeInput" type="text" maxlength="8" placeholder="Codi"/>
+      <button onclick="redeemFlyPotion()">Aconsegueix-la</button>
+      <div id="flyPotionStatus" style="margin-top:8px;"></div>
+    </div>
+    <button id="closeShop" onclick="closeShop()">Tanca</button>
+  </div>
+  <div id="editorPanel">
+    <b>Mode Creació:</b>
+    <select id="elementType">
+      <option value="cactus">Cactus</option>
+      <option value="parkour">Bloc Parkour</option>
+    </select>
+    <button onclick="saveMap()">Desa mapa</button>
+    <button onclick="playCustomMap()">Juga aquest mapa</button>
+    <button onclick="toggleEditor()">Sortir del mode creació</button>
+    <div style="margin-top:8px;font-size:14px">Fes clic al canvas per afegir elements</div>
+  </div>
+  <canvas id="gameCanvas" width="800" height="200"></canvas>
+  <div id="info">Prem <b>Espai</b> o <b>fletxa amunt</b> per saltar.<br><span id="flyStatus"></span></div>
+  <button id="restartBtn" onclick="restartGame()">Reinicia</button>
+  <script>
+    // --- Botiga/Fly Potion ---
+    let flyPotionUnlocked = false;
+    let flyActive = false;
+    let flyDuration = 0;
+    const FLY_POTION_CODE = "TTTT";
+    let FLY_POTION_TIME = 600; // 10 segons a 60fps
+
+    function openShop() {
+      document.getElementById('shop').style.display = 'block';
+      document.getElementById('shopBtn').style.display = 'none';
+      document.getElementById('createBtn').style.display = 'none';
+      document.getElementById('enllaçBtn').style.display = 'none';
+      document.getElementById('flyPotionStatus').innerText = flyPotionUnlocked ? "Ja tens la poció per volar!" : "";
+      document.getElementById('codeInput').value = "";
+    }
+    function closeShop() {
+      document.getElementById('shop').style.display = 'none';
+      document.getElementById('shopBtn').style.display = 'inline-block';
+      document.getElementById('createBtn').style.display = 'inline-block';
+      document.getElementById('enllaçBtn').style.display = 'inline-block';
+    }
+    function redeemFlyPotion() {
+      let code = document.getElementById('codeInput').value.trim();
+      if (flyPotionUnlocked) {
+        document.getElementById('flyPotionStatus').innerText = "Ja tens la poció per volar!";
+        return;
+      }
+      if (code === FLY_POTION_CODE) {
+        flyPotionUnlocked = true;
+        document.getElementById('flyPotionStatus').innerText = "Poció per volar aconseguida! Prem F durant la partida per volar.";
+      } else {
+        document.getElementById('flyPotionStatus').innerText = "Codi incorrecte.";
+      }
+    }
+
+    // --- JOC ---
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const groundY = 170, dinoX = 70, dinoW = 44, dinoH = 47;
+    const gravity = 0.7, jumpVel = -11;
+    let gameOver = false, started = false, score = 0, highScore = 0, speed = 7;
+    let obstacles = [], clouds = [];
+    let dino = { y: groundY - dinoH, vy: 0, w: dinoW, h: dinoH, isJumping: false, isDucking: false };
+    let cloudTimer = 0, cactusTimer = 0;
+    let customMap = [];
+    let editorMode = false;
+
+    function drawDino(x, y, ducking=false) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.fillStyle = flyActive ? "#2196f3" : "#444";
+      // Cos
+      if (ducking) {
+        ctx.fillRect(0, 22, 40, 18);
+        ctx.fillRect(34, 32, 10, 8); // cua
+        ctx.fillStyle = "#000";
+        ctx.fillRect(26, 28, 4, 4);
+      } else {
+        ctx.fillRect(0, 10, 32, 30);
+        ctx.fillRect(28, 28, 10, 10); // cua
+        ctx.fillRect(18, 0, 10, 18); // coll
+        ctx.fillStyle = "#000";
+        ctx.fillRect(24, 6, 4, 4);
+      }
+      ctx.restore();
+    }
+
+    function drawCactus(x, y, w, h) {
+      ctx.save();
+      ctx.fillStyle = "#2e7d32";
+      ctx.fillRect(x, y, w, h);
+      ctx.fillRect(x-5, y+h/3, 5, h/3);
+      ctx.fillRect(x+w, y+h/2, 5, h/3);
+      ctx.restore();
+    }
+
+    function drawParkourBlock(x, y, w, h) {
+      ctx.save();
+      ctx.fillStyle = "#ffb300";
+      ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = "#ff8f00";
+      ctx.strokeRect(x, y, w, h);
+      ctx.restore();
+    }
+
+    function drawCloud(x, y) {
+      ctx.save();
+      ctx.fillStyle = "#bbb";
+      ctx.beginPath();
+      ctx.ellipse(x, y, 18, 12, 0, 0, Math.PI*2);
+      ctx.ellipse(x+15, y+3, 10, 8, 0, 0, Math.PI*2);
+      ctx.ellipse(x-14, y+4, 11, 7, 0, 0, Math.PI*2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function reset() {
+      gameOver = false;
+      started = false;
+      score = 0;
+      speed = 7;
+      dino.y = groundY - dinoH;
+      dino.vy = 0;
+      dino.isJumping = false;
+      dino.isDucking = false;
+      flyActive = false;
+      flyDuration = 0;
+      document.getElementById("flyStatus").innerText = "";
+      obstacles = [];
+      clouds = [];
+      cloudTimer = 0;
+      cactusTimer = 0;
+      document.getElementById('restartBtn').style.display = 'none';
+      document.getElementById('shopBtn').style.display = 'inline-block';
+      document.getElementById('createBtn').style.display = 'inline-block';
+      document.getElementById('enllaçBtn').style.display = 'inline-block';
+    }
+
+    function spawnCactus() {
+      let h = 30 + Math.random()*20;
+      let w = 14 + Math.random()*14;
+      obstacles.push({x: canvas.width+10, y: groundY-h, w: w, h: h, type:'cactus'});
+    }
+
+    function spawnCloud() {
+      let y = 30 + Math.random()*30;
+      clouds.push({x: canvas.width+10, y: y});
+    }
+
+    function drawGround() {
+      ctx.strokeStyle = "#888";
+      ctx.beginPath();
+      ctx.moveTo(0, groundY+1);
+      ctx.lineTo(canvas.width, groundY+1);
+      ctx.stroke();
+    }
+
+    function drawScore() {
+      ctx.fillStyle = "#222";
+      ctx.font = '20px monospace';
+      ctx.fillText('Score: ' + score, canvas.width - 160, 30);
+      ctx.fillText('High: ' + highScore, canvas.width - 300, 30);
+    }
+
+    function update() {
+      if (!gameOver && started && !editorMode) {
+        if (flyActive) {
+          flyDuration--;
+          dino.vy = 0;
+          document.getElementById("flyStatus").innerText = "Estàs volant! (" + Math.ceil(flyDuration/60) + "s)";
+          if (keys['ArrowUp'] || keys['w']) dino.y -= 4.2;
+          if (keys['ArrowDown'] || keys['s']) dino.y += 4.2;
+          if (dino.y < 10) dino.y = 10;
+          if (dino.y > groundY - dino.h) dino.y = groundY - dino.h;
+          if (flyDuration <=0){
+            flyActive = false;
+            document.getElementById("flyStatus").innerText = "";
+          }
+        } else {
+          dino.y += dino.vy;
+          dino.vy += gravity;
+          if (dino.y >= groundY - dino.h) {
+            dino.y = groundY - dino.h;
+            dino.vy = 0;
+            dino.isJumping = false;
+          }
+        }
+
+        // Obstacles
+        for (let o of obstacles) o.x -= speed;
+        if (obstacles.length && obstacles[0].x + obstacles[0].w < 0) obstacles.shift();
+        cactusTimer--;
+        if (cactusTimer <= 0) {
+          spawnCactus();
+          cactusTimer = 60 + Math.random()*50;
+        }
+
+        // Parkour blocks (move with obstacles)
+        for (let o of obstacles) {
+          if(o.type === 'parkour') o.x -= speed;
+        }
+
+        // Núvols
+        for (let c of clouds) c.x -= speed/3;
+        if (clouds.length && clouds[0].x < -40) clouds.shift();
+        cloudTimer--;
+        if (cloudTimer <= 0) {
+          spawnCloud();
+          cloudTimer = 80 + Math.random()*60;
+        }
+
+        // SCORE i VELOCITAT
+        score++;
+        if (score % 200 === 0) speed += 0.7;
+
+        // XOCS (no xoca si vols)
+        if (!flyActive) {
+          for (let o of obstacles) {
+            if (
+              dino.y + dino.h > o.y &&
+              dino.y < o.y + o.h &&
+              dinoX + dino.w > o.x &&
+              dinoX < o.x + o.w
+            ) {
+              // Si és parkour, només "mata" si vas per sota del bloc
+              if(o.type === 'parkour') {
+                if(dino.y + dino.h > o.y + 6) {
+                  gameOver = true;
+                  if(score > highScore) highScore = score;
+                  document.getElementById('restartBtn').style.display = 'inline-block';
+                }
+              } else {
+                gameOver = true;
+                if(score > highScore) highScore = score;
+                document.getElementById('restartBtn').style.display = 'inline-block';
+              }
+            }
+          }
+        }
+      }
+    }
+
+    function draw() {
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+
+      // Fons núvols
+      for (let c of clouds) drawCloud(c.x, c.y);
+
+      drawGround();
+
+      // Obstacles
+      for (let o of obstacles) {
+        if(o.type === 'parkour') drawParkourBlock(o.x, o.y, o.w, o.h);
+        else drawCactus(o.x, o.y, o.w, o.h);
+      }
+
+      // Dino
+      if (!editorMode) drawDino(dinoX, dino.y, dino.isDucking && dino.y >= groundY-dinoH);
+
+      drawScore();
+
+      if (!started && !gameOver && !editorMode) {
+        ctx.fillStyle = "#222";
+        ctx.font = "22px sans-serif";
+        ctx.fillText("Prem Espai per començar!", 270, 110);
+      }
+      if (gameOver) {
+        ctx.fillStyle = "#B71C1C";
+        ctx.font = "24px sans-serif";
+        ctx.fillText("Has perdut!", 350, 80);
+        ctx.font = "18px sans-serif";
+        ctx.fillText("Prem 'Reinicia' o la tecla R", 310, 120);
+      }
+
+      // Dibuixa elements de l'editor (si cal)
+      if(editorMode) {
+        ctx.save();
+        ctx.globalAlpha = 0.8;
+        for(let e of customMap) {
+          if(e.type === 'cactus') drawCactus(e.x, e.y, e.w, e.h);
+          if(e.type === 'parkour') drawParkourBlock(e.x, e.y, e.w, e.h);
+        }
+        ctx.restore();
+      }
+    }
+
+    function loop() {
+      update();
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    // --- CONTROLS ---
+    let keys = {};
+    window.addEventListener('keydown', function(e){
+      keys[e.key] = true;
+      if (editorMode) return;
+      if (e.code === 'Space' || e.key === 'ArrowUp') {
+        if (!gameOver) {
+          started = true;
+          if (!dino.isJumping && dino.y >= groundY-dino.h && !flyActive) {
+            dino.vy = jumpVel;
+            dino.isJumping = true;
+          }
+        }
+        e.preventDefault();
+      }
+      if (e.key === 'ArrowDown') {
+        dino.isDucking = true;
+        dino.h = dinoH-10;
+      }
+      if (gameOver && (e.key === 'r' || e.key === 'R')) restartGame();
+
+      // FLY ACTIVATE
+      if (e.key === 'f' || e.key === 'F') {
+        if (flyPotionUnlocked && !flyActive && started && !gameOver) {
+          flyActive = true;
+          flyDuration = FLY_POTION_TIME;
+          document.getElementById("flyStatus").innerText = "Estàs volant! (" + Math.ceil(flyDuration/60) + "s)";
+        }
+      }
+    });
+
+    window.addEventListener('keyup', function(e){
+      keys[e.key] = false;
+      if (editorMode) return;
+      if (e.key === 'ArrowDown') {
+        dino.isDucking = false;
+        dino.h = dinoH;
+      }
+    });
+
+    function restartGame() {
+      reset();
+      if(playingCustomMap) playCustomMap();
+    }
+
+    // --- Editor ---
+    function toggleEditor() {
+      editorMode = !editorMode;
+      document.getElementById('editorPanel').style.display = editorMode ? 'block' : 'none';
+      document.getElementById('shopBtn').style.display = editorMode ? 'none' : 'inline-block';
+      document.getElementById('createBtn').style.display = editorMode ? 'none' : 'inline-block';
+      document.getElementById('enllaçBtn').style.display = editorMode ? 'none' : 'inline-block';
+      document.getElementById('restartBtn').style.display = editorMode ? 'none' : (gameOver ? 'inline-block' : 'none');
+      if(editorMode) {
+        started = false;
+        gameOver = false;
+        dino.y = groundY - dinoH;
+        customMap = [];
+        obstacles = [];
+      } else {
+        obstacles = [];
+        reset();
+      }
+    }
+
+    // Col·loca elements sobre el canvas
+    canvas.addEventListener('click', function(e){
+      if(!editorMode) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const type = document.getElementById('elementType').value;
+      if(type === 'cactus') {
+        customMap.push({type:'cactus', x:x, y:groundY-42, w:22, h:42});
+      }
+      if(type === 'parkour') {
+        customMap.push({type:'parkour', x:x, y:y, w:38, h:12});
+      }
+    });
+
+    function saveMap() {
+      alert("Mapa desat temporalment! (no es desa fora d'aquesta sessió).");
+    }
+
+    let playingCustomMap = false;
+    function playCustomMap() {
+      if(customMap.length === 0) {
+        alert("Crea primer un mapa!");
+        return;
+      }
+      playingCustomMap = true;
+      editorMode = false;
+      document.getElementById('editorPanel').style.display = 'none';
+      reset();
+      // Clonem el mapa i el fem moure
+      obstacles = customMap.map(e => Object.assign({}, e));
+      // Els obstacles s'aniran movent com en el joc normal
+      started = true;
+    }
+
+    // --- Inici ---
+    reset();
+    loop();
+  </script>
+</body>
+</html>
