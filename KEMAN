@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+  <meta charset="UTF-8">
+  <title>KEMAN - Joc 3D de Naus Espacials</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: #000;}
+    #menu, #shop, #gameover {
+      position: absolute; top:0; left:0; width:100vw; height:100vh;
+      background: rgba(0,0,0,0.9); color: #fff; display: flex;
+      flex-direction: column; justify-content: center; align-items: center;
+      z-index: 10;
+    }
+    #menu h1 { font-size: 3em; margin-bottom: 24px; }
+    #menu button, #shop button {
+      font-size: 1.4em; margin: 14px; padding: 12px 38px; border-radius: 8px; border: none;
+      background: #33ccff; color: #222; font-weight: bold; cursor:pointer;
+      transition: background 0.2s;
+    }
+    #menu button:hover, #shop button:hover { background: #228be6; color: #fff; }
+    #difficultySelect {
+      margin-top: 8px;
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      align-items: center;
+    }
+    .diff-btn {
+      font-size: 1.1em;
+      padding: 7px 20px;
+      border-radius: 6px;
+      border: none;
+      background: #555a;
+      color: #fff;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .diff-btn.selected, .diff-btn:active {
+      background: #33ccff !important;
+      color: #222;
+    }
+    #info {
+      position: absolute; color: #fff; top: 10px; left: 10px;
+      background: rgba(20,20,30,0.7); padding: 7px 22px; border-radius: 8px;
+      font-size: 1.2em;
+      z-index: 2;
+    }
+    #score {
+      position: absolute; color: #fff; top: 10px; right: 10px;
+      background: rgba(20,20,30,0.7); padding: 7px 22px; border-radius: 8px; font-size: 1.2em;
+      z-index: 2;
+    }
+    #gameover {
+      display: none; flex-direction: column; justify-content: center; align-items: center;
+      background: rgba(0,0,0,0.91);
+    }
+    #gameover h2 { color: #ff4d4d; margin-bottom: 20px;}
+    #gameover button {
+      margin-top: 18px; font-size: 1.2em; border-radius: 8px; border: none;
+      background: #33ccff; color: #222; font-weight: bold; padding: 12px 32px; cursor:pointer;
+      transition: background 0.2s;
+    }
+    #gameover button:hover { background: #228be6; color: #fff; }
+    #shop { display:none; }
+    #shop h2 { font-size: 2em; margin-bottom: 18px;}
+    .shop-list { display: flex; flex-wrap: wrap; gap: 30px; justify-content:center; }
+    .shop-item {
+      background: rgba(50,60,90,0.87); border-radius: 12px; padding: 22px 36px; text-align: center;
+      min-width: 180px;
+    }
+    .shop-item.selected { outline: 3px solid #33ccff; }
+    .shop-item button {
+      margin-top: 10px; font-size: 1em; border-radius: 6px; border: none;
+      background: #33ccff; color: #222; font-weight: bold; padding: 7px 20px; cursor:pointer;
+    }
+    .shop-item button[disabled] { background: #555; color: #aaa; cursor: not-allowed;}
+    .shop-item .bought { color: #6f6; font-weight: bold; margin-top: 10px;}
+    #backToMenuBtn {
+      position: absolute;
+      left: 10px; top: 55px;
+      z-index: 3;
+      background: #33ccff;
+      color: #222;
+      padding: 7px 22px;
+      font-size: 1em;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      display: none;
+      transition: background 0.2s;
+    }
+    #backToMenuBtn:hover { background: #228be6; color: #fff; }
+    @media (max-width: 600px) {
+      #menu h1 { font-size: 2em; }
+      #shop h2 { font-size: 1.3em; }
+      .shop-list { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <div id="menu">
+    <h1>KEMAN</h1>
+    <button id="playBtn">Jugar</button>
+    <button id="shopBtn">Botiga</button>
+    <button id="difficultyBtn" style="margin-top:5px;">DIFICULTAT</button>
+    <div id="difficultySelect" style="display:none;">
+      <button class="diff-btn" id="diffFacil">Fàcil</button>
+      <button class="diff-btn" id="diffNormal">Normal</button>
+      <button class="diff-btn" id="diffDificil">Difícil</button>
+    </div>
+    <div style="margin-top: 30px; font-size:1.08em;">
+      Desenvolupat amb Three.js <br>
+      Controls: Fletxes per moure · Espai per disparar
+    </div>
+  </div>
+  <div id="shop">
+    <h2>Botiga de Naus</h2>
+    <div id="pointsShop" style="font-size:1.2em; margin-bottom:20px"></div>
+    <div class="shop-list" id="shopList"></div>
+    <button id="backMenuBtn">Tornar al menú</button>
+  </div>
+  <div id="gameover">
+    <h2>Has estat destruït!</h2>
+    <div id="finalScore"></div>
+    <button id="restartBtn">Tornar al menú</button>
+  </div>
+  <button id="backToMenuBtn">Torna al menú</button>
+  <div id="info" style="display:none;">Fletxes per moure | Espai per disparar</div>
+  <div id="score" style="display:none;">Punts: 0</div>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.157.0/build/three.min.js"></script>
+  <script>
+    // ------------------ CONSTANTS & STATE ------------------
+    const shipsData = [
+      { name: "Clàssica", price: 0, color: 0x33ccff, shape: "cone", bought: true },
+      { name: "Vermella", price: 10, color: 0xff3333, shape: "cone", bought: false },
+      { name: "Verda", price: 20, color: 0x33ff77, shape: "cone", bought: false },
+      { name: "Cub", price: 30, color: 0xffcc00, shape: "box", bought: false },
+      { name: "Rodona", price: 50, color: 0xf7e9a0, shape: "sphere", bought: false }
+    ];
+    let selectedShip = 0;
+    let points = parseInt(localStorage.getItem('keman_points')) || 0;
+    let boughtShips = JSON.parse(localStorage.getItem('keman_bought')) || [true, false, false, false, false];
+    let gameState = "menu"; // "menu", "playing", "shop", "gameover"
+
+    // ----------- DIFICULTAT ----------------
+    let difficulty = localStorage.getItem('keman_difficulty') || 'Normal';
+    const difficulties = {
+      "Fàcil":    { enemySpeed: 0.6, enemySpawn: 1550, laserCooldown: 170, speedIncrease: 0.04 },
+      "Normal":   { enemySpeed: 1,   enemySpawn: 1200, laserCooldown: 250, speedIncrease: 0.10 },
+      "Difícil":  { enemySpeed: 2,   enemySpawn: 650,  laserCooldown: 350, speedIncrease: 0.20 }
+    };
+
+    function updateDifficultyUI() {
+      document.querySelectorAll('.diff-btn').forEach(btn => btn.classList.remove('selected'));
+      if (difficulty === "Fàcil") document.getElementById('diffFacil').classList.add('selected');
+      else if (difficulty === "Normal") document.getElementById('diffNormal').classList.add('selected');
+      else if (difficulty === "Difícil") document.getElementById('diffDificil').classList.add('selected');
+    }
+
+    document.getElementById('difficultyBtn').onclick = () => {
+      let sel = document.getElementById('difficultySelect');
+      sel.style.display = sel.style.display === "none" ? "flex" : "none";
+      updateDifficultyUI();
+    };
+    document.getElementById('diffFacil').onclick = () => { difficulty = "Fàcil"; localStorage.setItem('keman_difficulty', difficulty); updateDifficultyUI(); };
+    document.getElementById('diffNormal').onclick = () => { difficulty = "Normal"; localStorage.setItem('keman_difficulty', difficulty); updateDifficultyUI(); };
+    document.getElementById('diffDificil').onclick = () => { difficulty = "Difícil"; localStorage.setItem('keman_difficulty', difficulty); updateDifficultyUI(); };
+
+    // ------------------ MENU & SHOP ------------------
+    function updateMenu() {
+      document.getElementById("menu").style.display = (gameState === "menu") ? "flex" : "none";
+      document.getElementById("shop").style.display = (gameState === "shop") ? "flex" : "none";
+      document.getElementById("info").style.display = (gameState === "playing") ? "block" : "none";
+      document.getElementById("score").style.display = (gameState === "playing") ? "block" : "none";
+      document.getElementById("gameover").style.display = (gameState === "gameover") ? "flex" : "none";
+      document.getElementById("backToMenuBtn").style.display = (gameState === "playing") ? "block" : "none";
+      document.getElementById('difficultySelect').style.display = "none";
+      updateDifficultyUI();
+    }
+
+    document.getElementById("playBtn").onclick = () => { gameState = "playing"; updateMenu(); startGame(); };
+    document.getElementById("shopBtn").onclick = () => { gameState = "shop"; updateMenu(); drawShop(); };
+    document.getElementById("backMenuBtn").onclick = () => { gameState = "menu"; updateMenu(); };
+    document.getElementById("restartBtn").onclick = () => { gameState = "menu"; updateMenu(); };
+    document.getElementById("backToMenuBtn").onclick = () => {
+      gameState = "menu";
+      updateMenu();
+      // Cancel·la el bucle d'animació i elimina render
+      if (animateId) cancelAnimationFrame(animateId);
+      if (renderer && renderer.domElement) renderer.domElement.remove();
+      if (enemySpawner) clearInterval(enemySpawner);
+    };
+
+    function drawShop() {
+      let listHTML = "";
+      shipsData.forEach((ship, i) => {
+        let isBought = boughtShips[i];
+        listHTML += `<div class="shop-item${selectedShip===i?" selected":""}">
+          <div style="font-weight:bold;font-size:1.15em;margin-bottom:6px;">${ship.name}</div>
+          <div><canvas id="shipcanvas${i}" width="70" height="60"></canvas></div>
+          <div style="margin-top:10px;">
+          ${isBought ?
+            (selectedShip===i ? '<span class="bought">Seleccionada</span>' : `<button onclick="selectShip(${i})">Selecciona</button>`)
+            : `<button onclick="buyShip(${i})" ${points<ship.price?'disabled':''}>Compra (${ship.price} punts)</button>`}
+          </div>
+        </div>`;
+      });
+      document.getElementById("shopList").innerHTML = listHTML;
+      document.getElementById("pointsShop").innerText = "Punts: " + points;
+      // Render ship preview
+      shipsData.forEach((ship, i) => renderShipPreview(ship, "shipcanvas"+i));
+    }
+
+    window.buyShip = function(i) {
+      if(points >= shipsData[i].price && !boughtShips[i]) {
+        points -= shipsData[i].price;
+        boughtShips[i] = true;
+        localStorage.setItem('keman_points', points);
+        localStorage.setItem('keman_bought', JSON.stringify(boughtShips));
+        selectShip(i);
+        drawShop();
+      }
+    }
+    window.selectShip = function(i) {
+      if(boughtShips[i]) {
+        selectedShip = i;
+        localStorage.setItem('keman_selected', selectedShip);
+        drawShop();
+      }
+    }
+
+    function renderShipPreview(ship, canvasId) {
+      const cvs = document.getElementById(canvasId);
+      if(!cvs) return;
+      const ctx = cvs.getContext('2d');
+      ctx.clearRect(0,0,70,60);
+      ctx.save();
+      ctx.translate(35,40);
+      ctx.scale(1.5,1.5);
+      ctx.rotate(-Math.PI/10);
+      ctx.fillStyle = "#333";
+      ctx.beginPath();
+      ctx.arc(0,9,15,0,Math.PI*2); ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = "#"+ship.color.toString(16).padStart(6,"0");
+      if(ship.shape==="cone"){
+        ctx.beginPath();
+        ctx.moveTo(0,-15); ctx.lineTo(8,13); ctx.lineTo(-8,13); ctx.closePath(); ctx.fill();
+      } else if(ship.shape==="box"){
+        ctx.fillRect(-10,-10,20,20);
+      } else if(ship.shape==="sphere"){
+        ctx.beginPath();
+        ctx.arc(0,0,11,0,Math.PI*2); ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    // ------------------ GAME LOGIC ------------------
+    let scene, camera, renderer, ship, lasers, enemies, keys, canShoot, gameOver, score, animateId, enemySpawner;
+    let enemySpeedBase = 1; // augmenta amb cada kill
+
+    function startGame() {
+      // Init Three.js
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x000010);
+      camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+      camera.position.z = 5;
+
+      // Elimina renderers anteriors si existeixen
+      if(window.renderer && window.renderer.domElement) {
+        window.renderer.domElement.remove();
+      }
+      renderer = new THREE.WebGLRenderer();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      document.body.appendChild(renderer.domElement);
+
+      // Crea la nau del jugador segons la nau seleccionada
+      ship = createShipMesh(shipsData[selectedShip]);
+      ship.position.set(0,0,0);
+      scene.add(ship);
+
+      // Llum
+      const light = new THREE.DirectionalLight(0xffffff, 1);
+      light.position.set(5,10,7);
+      scene.add(light);
+      scene.add(new THREE.AmbientLight(0x555555));
+
+      // Controls
+      keys = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false, Space: false };
+
+      // Làsers i enemics
+      lasers = [];
+      enemies = [];
+      canShoot = true;
+      gameOver = false;
+      score = 0;
+      document.getElementById("score").innerText = "Punts: 0";
+      enemySpeedBase = difficulties[difficulty].enemySpeed;
+
+      // Spawn d'enemics
+      if(enemySpawner) clearInterval(enemySpawner);
+      enemySpawner = setInterval(() => { if (!gameOver) spawnEnemy(); }, difficulties[difficulty].enemySpawn);
+
+      // Començar animació
+      if(animateId) cancelAnimationFrame(animateId);
+      animate();
+    }
+
+    // Controls (només 1 registre)
+    if(!window.keyListenersSet) {
+      document.addEventListener('keydown', (e) => {
+        if (e.code === "Space") { keys.Space = true; e.preventDefault(); }
+        if (keys.hasOwnProperty(e.code)) keys[e.code] = true;
+      });
+      document.addEventListener('keyup', (e) => {
+        if (e.code === "Space") { keys.Space = false; e.preventDefault(); }
+        if (keys.hasOwnProperty(e.code)) keys[e.code] = false;
+      });
+      window.keyListenersSet = true;
+    }
+
+    function createShipMesh(shipData) {
+      let mesh;
+      if(shipData.shape==="cone") {
+        const geometry = new THREE.ConeGeometry(1,2,4);
+        const material = new THREE.MeshPhongMaterial({color: shipData.color, flatShading:true});
+        mesh = new THREE.Mesh(geometry, material);
+        mesh.rotation.x = Math.PI/2;
+      } else if(shipData.shape==="box") {
+        const geometry = new THREE.BoxGeometry(1.6,1.6,1.6);
+        const material = new THREE.MeshPhongMaterial({color: shipData.color});
+        mesh = new THREE.Mesh(geometry, material);
+      } else if(shipData.shape==="sphere") {
+        const geometry = new THREE.SphereGeometry(1,16,8);
+        const material = new THREE.MeshPhongMaterial({color: shipData.color});
+        mesh = new THREE.Mesh(geometry, material);
+      }
+      mesh.position.z = 0;
+      return mesh;
+    }
+
+    function shootLaser() {
+      if (!canShoot) return;
+      canShoot = false;
+      setTimeout(() => canShoot = true, difficulties[difficulty].laserCooldown);
+
+      const laserGeometry = new THREE.CylinderGeometry(0.07, 0.07, 0.8, 8);
+      const laserMaterial = new THREE.MeshBasicMaterial({color: 0x00fffc});
+      const laser = new THREE.Mesh(laserGeometry, laserMaterial);
+      laser.position.set(ship.position.x, ship.position.y+1.1, 0);
+      laser.rotation.x = Math.PI / 2;
+      laser.userData = { speed: 0.2 };
+      scene.add(laser);
+      lasers.push(laser);
+    }
+
+    function spawnEnemy() {
+      const enemyGeometry = new THREE.ConeGeometry(1, 2, 4);
+      const enemyMaterial = new THREE.MeshPhongMaterial({color: 0xff3333, flatShading: true});
+      const enemy = new THREE.Mesh(enemyGeometry, enemyMaterial);
+      enemy.rotation.x = Math.PI / 2;
+      enemy.position.x = (Math.random() - 0.5) * 8; // Entre -4 i 4
+      enemy.position.y = 7 + Math.random() * 3;     // Entre 7 i 10
+      // La velocitat base augmenta amb cada kill!
+      enemy.userData = { speed: (0.025 + Math.random() * 0.04) * enemySpeedBase };
+      scene.add(enemy);
+      enemies.push(enemy);
+    }
+
+    function checkCollision(obj1, obj2, dist) {
+      const dx = obj1.position.x - obj2.position.x;
+      const dy = obj1.position.y - obj2.position.y;
+      return (dx*dx + dy*dy) < dist*dist;
+    }
+
+    function animate() {
+      animateId = requestAnimationFrame(animate);
+      if (gameOver) return;
+
+      // Controls nau
+      if (keys.ArrowUp && ship.position.y < 7) ship.position.y += 0.08;
+      if (keys.ArrowDown && ship.position.y > -7) ship.position.y -= 0.08;
+      if (keys.ArrowLeft && ship.position.x > -7) ship.position.x -= 0.08;
+      if (keys.ArrowRight && ship.position.x < 7) ship.position.x += 0.08;
+
+      // Disparar
+      if (keys.Space) shootLaser();
+
+      // Moure làsers
+      for (let i = lasers.length - 1; i >= 0; i--) {
+        lasers[i].position.y += lasers[i].userData.speed * 12 * 0.016;
+        if (lasers[i].position.y > 13) {
+          scene.remove(lasers[i]);
+          lasers.splice(i, 1);
+        }
+      }
+
+      // Moure enemics i col·lisions
+      for (let i = enemies.length - 1; i >= 0; i--) {
+        if (!enemies[i]) continue;
+        enemies[i].position.y -= enemies[i].userData.speed * 12 * 0.016;
+        // Col·lisió amb nau
+        if (checkCollision(enemies[i], ship, 1.2)) {
+          document.getElementById('finalScore').innerText = "Puntuació final: " + score + " punts";
+          document.getElementById('gameover').style.display = 'flex';
+          gameOver = true;
+          clearInterval(enemySpawner);
+          // Guarda punts i naus comprades
+          points += score;
+          localStorage.setItem('keman_points', points);
+          localStorage.setItem('keman_bought', JSON.stringify(boughtShips));
+        }
+        // Fora de pantalla
+        if (enemies[i] && enemies[i].position.y < -9) {
+          scene.remove(enemies[i]);
+          enemies.splice(i, 1);
+        }
+        // Col·lisió amb làser
+        for (let j = lasers.length - 1; j >= 0; j--) {
+          if (enemies[i] && lasers[j] && checkCollision(enemies[i], lasers[j], 1.1)) {
+            scene.remove(enemies[i]);
+            scene.remove(lasers[j]);
+            enemies.splice(i, 1);
+            lasers.splice(j, 1);
+            score++;
+            document.getElementById("score").innerText = "Punts: " + score;
+            enemySpeedBase += difficulties[difficulty].speedIncrease; // Cada kill = enemics més ràpids!
+            break;
+          }
+        }
+      }
+
+      renderer.render(scene, camera);
+    }
+
+    // Redimensionament
+    window.addEventListener('resize', () => {
+      if (camera && renderer) {
+        camera.aspect = window.innerWidth/window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      }
+    });
+
+    selectedShip = parseInt(localStorage.getItem('keman_selected')) || 0;
+
+    updateMenu();
+  </script>
+</body>
+</html>
