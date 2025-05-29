@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+  <meta charset="UTF-8">
+  <title>Laberint de la Pilota</title>
+  <style>
+    body { background: #222; color: #fff; font-family: sans-serif; text-align: center; }
+    #gameCanvas { background: #444; display: block; margin: 0 auto; border: 2px solid #fff; }
+    #level { font-size: 1.2em; margin-bottom: 10px; }
+    #restart, #nextLevel { display: none; margin: 6px; }
+  </style>
+</head>
+<body>
+  <h1>Laberint de la Pilota</h1>
+  <div id="level">Nivell: 1</div>
+  <canvas id="gameCanvas" width="700" height="400"></canvas>
+  <br>
+  <button id="restart">Reinicia nivell</button>
+  <button id="nextLevel">Següent nivell</button>
+  <script>
+    // Constants de física
+    const GRAVITY = 0.5;
+    const FRICTION = 0.96;
+    const BOUNCE = 0.7;
+    const PLAYER_SPEED = 4;
+    const JUMP_FORCE = -10;
+
+    // Dades dels nivells (afegeix més nivells aquí!)
+    const levels = [
+      // Nivell 1
+      {
+        playerStart: {x: 60, y: 300},
+        platforms: [
+          { x:0, y:380, w:700, h:20 }, // terra
+          { x:80, y:320, w:120, h:10 },
+          { x:270, y:260, w:120, h:10 },
+          { x:440, y:200, w:150, h:10 }
+        ],
+        obstacles: [],
+        goal: { x: 610, y:170, r:18 }
+      },
+      // Nivell 2 (plataformes petites)
+      {
+        playerStart: {x: 30, y: 360},
+        platforms: [
+          { x:0, y:380, w:700, h:20 },
+          { x:90, y:330, w:70, h:10 },
+          { x:220, y:290, w:60, h:10 },
+          { x:330, y:250, w:60, h:10 },
+          { x:440, y:210, w:70, h:10 },
+          { x:580, y:170, w:60, h:10 }
+        ],
+        obstacles: [
+          { x:290, y:380, w:20, h:60, vx: 2 }
+        ],
+        goal: { x: 620, y:140, r:18 }
+      },
+      // Nivell 3 (obstacles mòbils)
+      {
+        playerStart: {x: 30, y: 360},
+        platforms: [
+          { x:0, y:380, w:700, h:20 },
+          { x:130, y:330, w:90, h:10 },
+          { x:270, y:280, w:60, h:10 },
+          { x:400, y:220, w:50, h:10 },
+          { x:540, y:170, w:70, h:10 }
+        ],
+        obstacles: [
+          { x:160, y:330, w:20, h:10, vx: 3 },
+          { x:290, y:280, w:20, h:10, vx: -2 },
+          { x:420, y:220, w:20, h:10, vx: 2.5 }
+        ],
+        goal: { x: 630, y:140, r:18 }
+      }
+      // Pots afegir més nivells!
+    ];
+
+    let currentLevel = 0;
+    let player = {};
+    let platforms = [];
+    let obstacles = [];
+    let goal = {};
+    let gameOver = false;
+    let levelCompleted = false;
+    let keys = {};
+
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    const levelDiv = document.getElementById("level");
+    const restartBtn = document.getElementById("restart");
+    const nextLevelBtn = document.getElementById("nextLevel");
+
+    document.addEventListener("keydown", e => keys[e.key] = true);
+    document.addEventListener("keyup", e => keys[e.key] = false);
+
+    restartBtn.onclick = () => { loadLevel(currentLevel); };
+    nextLevelBtn.onclick = () => {
+      if (currentLevel < levels.length-1) {
+        loadLevel(currentLevel+1);
+      }
+    };
+
+    function loadLevel(idx) {
+      currentLevel = idx;
+      let lvl = levels[currentLevel];
+      player = {
+        x: lvl.playerStart.x,
+        y: lvl.playerStart.y,
+        vx: 0, vy: 0,
+        radius: 18,
+        onGround: false
+      };
+      platforms = lvl.platforms.map(p => Object.assign({}, p));
+      obstacles = lvl.obstacles.map(o => Object.assign({}, o));
+      goal = Object.assign({}, lvl.goal);
+      gameOver = false;
+      levelCompleted = false;
+      levelDiv.innerText = "Nivell: "+(currentLevel+1);
+      restartBtn.style.display = "none";
+      nextLevelBtn.style.display = "none";
+    }
+
+    function drawPlayer() {
+      ctx.beginPath();
+      ctx.arc(player.x, player.y, player.radius, 0, Math.PI*2);
+      ctx.fillStyle = "#FFD600";
+      ctx.fill();
+      ctx.strokeStyle = "#fff";
+      ctx.stroke();
+    }
+
+    function drawPlatforms() {
+      platforms.forEach(p => {
+        ctx.fillStyle = "#82B366";
+        ctx.fillRect(p.x, p.y, p.w, p.h);
+        ctx.strokeStyle = "#fff";
+        ctx.strokeRect(p.x, p.y, p.w, p.h);
+      });
+    }
+
+    function drawObstacles() {
+      obstacles.forEach(o => {
+        ctx.fillStyle = "#E53935";
+        ctx.fillRect(o.x, o.y, o.w, o.h);
+        ctx.strokeStyle = "#fff";
+        ctx.strokeRect(o.x, o.y, o.w, o.h);
+      });
+    }
+
+    function drawGoal() {
+      ctx.beginPath();
+      ctx.arc(goal.x, goal.y, goal.r, 0, Math.PI*2);
+      ctx.fillStyle = "#29B6F6";
+      ctx.fill();
+      ctx.strokeStyle = "#fff";
+      ctx.stroke();
+      // Dibuixa bandera
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(goal.x, goal.y-goal.r);
+      ctx.lineTo(goal.x, goal.y-goal.r-25);
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(goal.x, goal.y-goal.r-25);
+      ctx.lineTo(goal.x+18, goal.y-goal.r-18);
+      ctx.lineTo(goal.x, goal.y-goal.r-12);
+      ctx.closePath();
+      ctx.fillStyle = "#FBC02D";
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function updatePlayer() {
+      if (gameOver || levelCompleted) return;
+      // Controls
+      if (keys["ArrowLeft"]) player.vx = -PLAYER_SPEED;
+      else if (keys["ArrowRight"]) player.vx = PLAYER_SPEED;
+      else player.vx = 0;
+      // Salt
+      if ((keys["ArrowUp"] || keys[" "]) && player.onGround) {
+        player.vy = JUMP_FORCE;
+        player.onGround = false;
+      }
+      // Físiques
+      player.vy += GRAVITY;
+      player.x += player.vx;
+      player.y += player.vy;
+      player.vx *= FRICTION;
+      // Col·lisions amb plataformes
+      player.onGround = false;
+      platforms.forEach(p => {
+        if (
+          player.x + player.radius > p.x && player.x - player.radius < p.x+p.w &&
+          player.y + player.radius > p.y && player.y + player.radius < p.y+p.h &&
+          player.vy > 0
+        ) {
+          player.y = p.y - player.radius;
+          player.vy *= -BOUNCE;
+          if (Math.abs(player.vy) < 2) {
+            player.vy = 0;
+            player.onGround = true;
+          }
+        }
+      });
+      // Xoc lateral plataformes (simple)
+      platforms.forEach(p => {
+        if (
+          player.y + player.radius > p.y && player.y - player.radius < p.y+p.h &&
+          player.x + player.radius > p.x && player.x - player.radius < p.x+p.w
+        ) {
+          // Si cau per l'esquerra
+          if (player.x < p.x && player.vx > 0) player.x = p.x - player.radius;
+          // Si cau per la dreta
+          if (player.x > p.x+p.w && player.vx < 0) player.x = p.x+p.w+player.radius;
+        }
+      });
+      // Limitar als límits del canvas
+      if (player.x - player.radius < 0) player.x = player.radius;
+      if (player.x + player.radius > canvas.width) player.x = canvas.width - player.radius;
+      if (player.y - player.radius < 0) player.y = player.radius;
+      // Si cau fora del canvas
+      if (player.y - player.radius > canvas.height) {
+        gameOver = true;
+        restartBtn.style.display = "inline";
+      }
+    }
+
+    function updateObstacles() {
+      obstacles.forEach(o => {
+        o.x += o.vx;
+        // Reboten als marges
+        if (o.x < 0 || o.x + o.w > canvas.width) o.vx *= -1;
+        // Col·lisió pilota-obstacle
+        if (
+          player.x + player.radius > o.x && player.x - player.radius < o.x + o.w &&
+          player.y + player.radius > o.y && player.y - player.radius < o.y + o.h
+        ) {
+          gameOver = true;
+          restartBtn.style.display = "inline";
+        }
+      });
+    }
+
+    function checkGoal() {
+      let dx = player.x - goal.x, dy = player.y - goal.y;
+      if (Math.sqrt(dx*dx + dy*dy) < player.radius + goal.r) {
+        levelCompleted = true;
+        if (currentLevel < levels.length-1) {
+          nextLevelBtn.style.display = "inline";
+        }
+      }
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawPlatforms();
+      drawObstacles();
+      drawGoal();
+      drawPlayer();
+      if (gameOver) {
+        ctx.fillStyle = "#fff";
+        ctx.font = "bold 32px sans-serif";
+        ctx.fillText("Has perdut! 😢", 270, 200);
+      }
+      if (levelCompleted) {
+        ctx.fillStyle = "#fff";
+        ctx.font = "bold 32px sans-serif";
+        ctx.fillText("Nivell superat! 🎉", 210, 200);
+      }
+    }
+
+    function gameLoop() {
+      updatePlayer();
+      updateObstacles();
+      checkGoal();
+      draw();
+      requestAnimationFrame(gameLoop);
+    }
+
+    // Inici del joc
+    loadLevel(0);
+    gameLoop();
+  </script>
+</body>
+</html>
