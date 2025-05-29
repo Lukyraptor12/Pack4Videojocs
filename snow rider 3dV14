@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+  <meta charset="UTF-8">
+  <title>SNOW RIDER 3D V14</title>
+  <style>
+    body { margin:0; overflow:hidden; background:#222; }
+    #score, #menu, #gameover, #shop, #coins, #powers, #bank {
+      position: absolute; left: 50%; transform: translateX(-50%);
+      font-family: Arial, sans-serif; z-index: 10;
+    }
+    #score {
+      top: 10px; color: #fff; font-size: 28px;
+      background: rgba(0,0,0,0.2); padding: 7px 18px; border-radius: 8px;
+      text-align: center; min-width: 200px; pointer-events: none;
+    }
+    #coins {
+      top: 50px; color: #ffe066; font-size: 22px;
+      background: rgba(0,0,0,0.18); padding: 5px 14px; border-radius: 8px;
+      min-width: 100px; pointer-events: none;
+      text-align: center;
+    }
+    #bank {
+      top: 80px; color: #ffe066; font-size: 20px;
+      background: rgba(0,0,0,0.13); padding: 4px 10px; border-radius: 8px;
+      min-width: 120px; pointer-events: none; text-align: center;
+    }
+    #powers {
+      top: 110px; color: #00ffff; font-size: 20px;
+      background: rgba(0,0,0,0.15); padding: 4px 10px; border-radius: 8px;
+      min-width: 120px; pointer-events: none;
+      text-align: center;
+    }
+    #menu, #gameover, #shop {
+      top: 30%; color: #fff; font-size: 34px; text-align: center;
+      background: rgba(50,50,50,0.7); padding: 32px 60px; border-radius: 20px;
+      display: none; box-shadow: 0 8px 24px #0009;
+    }
+    #menu button, #gameover button, #shop button, #shop .close-btn {
+      font-size: 20px; padding: 10px 24px; margin-top: 24px;
+      border-radius: 8px; border:none; cursor:pointer;
+    }
+    #shop .close-btn {
+      background: #888; color: #fff; font-size: 16px; padding: 4px 10px;
+      margin: 0; position: absolute; top: 8px; right: 18px; border-radius: 5px;
+    }
+    #openShopBtn {
+      position: absolute; right: 25px; top: 25px; z-index: 12; font-size: 22px;
+      background: #ffe066; color: #222; border-radius: 8px;
+      padding: 8px 22px; border: none; cursor: pointer; font-weight: bold;
+      box-shadow: 0 4px 14px #0002;
+    }
+    #shop .disabled {
+      background: #aaa !important; color: #fff !important;
+      cursor: not-allowed !important;
+    }
+    #shop .price {
+      color: #ffe066; font-weight: bold; margin-left: 10px;
+    }
+    #shop .info {
+      font-size:17px; margin-top: 8px; color:#fff;
+    }
+    .menu-records {
+      font-size: 18px; background:rgba(0,0,0,0.2); margin:20px 0 0 0; border-radius:8px; padding:12px;
+      color: #ffe066;
+    }
+    @media (max-width: 600px) {
+      #menu, #gameover, #shop { font-size: 20px; padding: 10px 4px; }
+      #score { font-size: 13px; min-width: 60px; }
+      #coins, #powers, #bank { font-size: 13px; min-width: 50px; }
+      #menu button, #gameover button, #shop button { font-size: 15px; }
+      #openShopBtn { font-size: 13px; padding: 4px 10px; }
+      .menu-records { font-size: 14px; padding:6px; }
+    }
+  </style>
+</head>
+<body>
+<div id="score">Punts: 0</div>
+<div id="coins">Monedes: 0</div>
+<div id="bank">Banca: 0</div>
+<div id="powers"></div>
+<button id="openShopBtn" onclick="openShop()">BOTIGA 🛒</button>
+<div id="menu">
+  <b>SNOW RIDER 3D V14</b><br>
+  <span style="font-size:18px">Evita obstacles, recull monedes, compra a la botiga i aconsegueix el poder de volar!</span>
+  <div class="menu-records">
+    <div id="menuMaxScore"></div>
+    <div id="menuMaxCoins"></div>
+    <div id="menuBank"></div>
+  </div>
+  <button onclick="startGame()">Comença</button>
+  <button onclick="openShop()">Botiga 🛒</button>
+</div>
+<div id="gameover">
+  <b>Game Over</b>
+  <span id="finalscore"></span>
+  <button onclick="goToMenu()">Torna al menú</button>
+</div>
+<div id="shop">
+  <button class="close-btn" onclick="closeShop()">X</button>
+  <b>BOTIGA</b><br>
+  <div class="info">Pots comprar una <b>Poció de Volar</b> per <span class="price">10 monedes</span>.<br>
+  Quan l'utilitzis, podràs volar durant 30 segons (no xoques amb obstacles!).<br>
+  <span style="color:#00ffff">Activa-la fent clic al botó o amb la tecla <b>F</b></span>
+  </div>
+  <button id="buyFlyBtn" onclick="buyFlyPotion()">Compra Poció de Volar</button>
+</div>
+<script src="https://unpkg.com/three@0.150.1/build/three.min.js"></script>
+<script>
+// =========== PERSISTÈNCIA DE PROGRÉS ==============
+function getRecord(key) { return Number(localStorage.getItem(key)) || 0; }
+function setRecord(key, val) { localStorage.setItem(key, val); }
+function getSave(key, def=0) { return localStorage.getItem(key)===null ? def : JSON.parse(localStorage.getItem(key)); }
+function setSave(key, val) { localStorage.setItem(key, JSON.stringify(val)); }
+function updateMenuRecords() {
+  document.getElementById('menuMaxScore').innerText = "Màxims punts: " + getRecord("maxPoints");
+  document.getElementById('menuMaxCoins').innerText = "Màximes monedes en una partida: " + getRecord("maxCoins");
+  document.getElementById('menuBank').innerText = "Monedes totals (banca): " + getBank();
+}
+function getBank() { return getSave("bank",0); }
+function setBank(val) { setSave("bank", val); document.getElementById('bank').innerText = "Banca: " + val; }
+function addToBank(val) { setBank(getBank()+val); }
+
+// ============= JOC ===============
+const WIDTH = window.innerWidth, HEIGHT = window.innerHeight;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x99ccff);
+const camera = new THREE.PerspectiveCamera(75, WIDTH/HEIGHT, 0.1, 1000);
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(WIDTH, HEIGHT);
+document.body.appendChild(renderer.domElement);
+
+const light = new THREE.DirectionalLight(0xffffff, 1.1);
+light.position.set(5,10,7);
+scene.add(light);
+const amb = new THREE.AmbientLight(0xffffff, 0.65);
+scene.add(amb);
+
+// Pista
+const groundGeo = new THREE.BoxGeometry(8, 0.1, 250);
+const groundMat = new THREE.MeshLambertMaterial({color: 0xffffff});
+const ground = new THREE.Mesh(groundGeo, groundMat);
+ground.position.set(0, -0.5, -120);
+scene.add(ground);
+
+let player;
+function createSled() {
+  const sled = new THREE.Group();
+  const baseGeo = new THREE.BoxGeometry(1, 0.22, 1.6);
+  const baseMat = new THREE.MeshLambertMaterial({color: 0xe25822});
+  const base = new THREE.Mesh(baseGeo, baseMat);
+  base.position.y = 0.36;
+  sled.add(base);
+  const seatGeo = new THREE.BoxGeometry(0.7, 0.1, 1.1);
+  const seatMat = new THREE.MeshLambertMaterial({color: 0x9b5a2e});
+  const seat = new THREE.Mesh(seatGeo, seatMat);
+  seat.position.set(0, 0.47, 0.15);
+  sled.add(seat);
+  const runnerGeo = new THREE.CylinderGeometry(0.05, 0.05, 1.5, 10);
+  const runnerMat = new THREE.MeshLambertMaterial({color: 0x666666});
+  const runner1 = new THREE.Mesh(runnerGeo, runnerMat);
+  runner1.rotation.z = Math.PI / 2; runner1.position.set(-0.42, 0.23, 0);
+  sled.add(runner1);
+  const runner2 = new THREE.Mesh(runnerGeo, runnerMat);
+  runner2.rotation.z = Math.PI / 2; runner2.position.set(0.42, 0.23, 0);
+  sled.add(runner2);
+  const barGeo = new THREE.CylinderGeometry(0.03, 0.03, 0.95, 10);
+  const barMat = new THREE.MeshLambertMaterial({color: 0x333333});
+  const bar1 = new THREE.Mesh(barGeo, barMat);
+  bar1.rotation.x = Math.PI/2; bar1.position.set(-0.42, 0.23, 0.65); sled.add(bar1);
+  const bar2 = new THREE.Mesh(barGeo, barMat);
+  bar2.rotation.x = Math.PI/2; bar2.position.set(0.42, 0.23, 0.65); sled.add(bar2);
+  const headGeo = new THREE.SphereGeometry(0.20, 14, 8);
+  const headMat = new THREE.MeshLambertMaterial({color: 0xffdfba});
+  const head = new THREE.Mesh(headGeo, headMat);
+  head.position.set(0, 0.66, 0.45); sled.add(head);
+  const bodyGeo = new THREE.CylinderGeometry(0.14, 0.14, 0.35, 8);
+  const bodyMat = new THREE.MeshLambertMaterial({color: 0x3388ee});
+  const body = new THREE.Mesh(bodyGeo, bodyMat);
+  body.position.set(0, 0.51, 0.32); sled.add(body);
+  sled.position.set(0, 0.6, 2);
+  return sled;
+}
+
+// ====== Objectes dinàmics ======
+let obstacles = [];
+let ramps = [];
+let powerups = [];
+let coinsArr = [];
+let types = ['tree','rock','ramp','powerup','coin'];
+
+// ====== Controls ======
+let move = 0, moveY = 0;
+let jumping = false, jumpV = 0;
+let mouseX = 0, mouseActive = false;
+let keyState = {};
+document.addEventListener('keydown', e => {
+  keyState[e.key.toLowerCase()] = true;
+  if(['arrowleft','a'].includes(e.key.toLowerCase())) move = -0.28;
+  if(['arrowright','d'].includes(e.key.toLowerCase())) move = 0.28;
+  if([' ','arrowup','w'].includes(e.key.toLowerCase()) && !jumping && canJump() && !flying) jump();
+  if(e.key === "s") openShop();
+  if(e.key.toLowerCase() === "f") useFlyPotion();
+});
+document.addEventListener('keyup', e => {
+  keyState[e.key.toLowerCase()] = false;
+  if(!mouseActive) move = 0;
+  if(!flying) moveY = 0;
+});
+renderer.domElement.addEventListener('pointerdown', e=>{
+  mouseActive = true; mouseX = (e.clientX/WIDTH)*2-1;
+});
+renderer.domElement.addEventListener('pointermove', e=>{
+  if(mouseActive) {
+    let x = (e.clientX/WIDTH)*2-1;
+    move = (x-mouseX)*0.7;
+    mouseX = x;
+  }
+});
+renderer.domElement.addEventListener('pointerup',()=>{move=0;mouseActive=false;});
+
+function playSound(url) {
+  const a = new Audio(url); a.volume=0.20; a.play();
+}
+
+// ====== Estat de partida ======
+let score = 0, speed = 0.25, playing = false, started = false;
+let boost = false, boostTimer = 0;
+let coins = 0;
+let flyPotions = 0, flying = false, flyTimer = 0;
+
+// ====== Elements d'interfície ======
+const scoreDiv = document.getElementById('score');
+const coinsDiv = document.getElementById('coins');
+const bankDiv = document.getElementById('bank');
+const powersDiv = document.getElementById('powers');
+const menuDiv = document.getElementById('menu');
+const overDiv = document.getElementById('gameover');
+const finalScore = document.getElementById('finalscore');
+const shopDiv = document.getElementById('shop');
+const openShopBtn = document.getElementById('openShopBtn');
+const buyFlyBtn = document.getElementById('buyFlyBtn');
+
+// ====== Botiga ======
+function openShop() {
+  if (!playing && !overDiv.style.display && !menuDiv.style.display) return;
+  shopDiv.style.display = "block";
+  buyFlyBtn.disabled = getBank() < 10 || flying || flyPotions>0;
+  buyFlyBtn.className = (getBank() < 10 || flying || flyPotions>0) ? "disabled" : "";
+}
+function closeShop() { shopDiv.style.display = "none"; }
+function buyFlyPotion() {
+  if(getBank() >= 10 && !flying && flyPotions===0) {
+    setBank(getBank()-10); flyPotions = 1;
+    buyFlyBtn.disabled = true;
+    buyFlyBtn.className = "disabled";
+    updatePowers();
+    playSound('https://cdn.pixabay.com/audio/2022/08/20/audio_12c8afc1d3.mp3');
+  }
+}
+function updatePowers() {
+  let txt = "";
+  if(flying) txt += "🧪 Volant! ("+Math.ceil(flyTimer/60)+"s) <span style='font-size:15px'>(W/S/↑/↓ per pujar/baixar)</span>";
+  else if(flyPotions>0) txt += '<button style="background:#00ffff;color:#222;font-weight:bold;border:none;border-radius:6px;padding:4px 12px;cursor:pointer" onclick="useFlyPotion()">Usa Poció de Volar</button> <span style=\'font-size:15px\'>(tecla F)</span>';
+  powersDiv.innerHTML = txt;
+}
+function useFlyPotion() {
+  if(flyPotions>0 && !flying) {
+    flying = true; flyPotions = 0; flyTimer = 30*60;
+    updatePowers();
+    playSound('https://cdn.pixabay.com/audio/2022/10/16/audio_12ce6c2c6e.mp3');
+  }
+}
+
+// ====== Menú ======
+function showMenu() {
+  menuDiv.style.display = "block";
+  updateMenuRecords();
+  coinsDiv.innerText = "Monedes: 0";
+  powersDiv.innerHTML = "";
+  bankDiv.innerText = "Banca: " + getBank();
+}
+function hideMenu() { menuDiv.style.display = "none"; }
+function showOver() { overDiv.style.display = "block"; }
+function hideOver() { overDiv.style.display = "none"; }
+function goToMenu() {
+  hideOver();
+  showMenu();
+}
+function resetObjects() {
+  [...obstacles, ...ramps, ...powerups, ...coinsArr].forEach(o=>scene.remove(o));
+  obstacles = []; ramps = []; powerups = []; coinsArr = [];
+}
+function startGame() {
+  started = true;
+  playing = true;
+  hideMenu(); hideOver(); closeShop();
+  resetObjects();
+  scene.remove(player);
+  player = createSled();
+  scene.add(player);
+  move = 0; moveY = 0; jumping = false; jumpV = 0;
+  score = 0; speed = 0.25; coins = 0;
+  flying = false; flyTimer = 0;
+  updatePowers();
+  coinsDiv.innerText = "Monedes: 0";
+  bankDiv.innerText = "Banca: " + getBank();
+  animate();
+}
+
+// ====== Crear obstacles, rampes, power-ups, monedes ======
+function spawnThing() {
+  let t = types[Math.random()<0.14 ? 4 : Math.floor(Math.random()*4)];
+  let x = (Math.random()-0.5)*6.4, z = camera.position.z-55-Math.random()*40;
+  if (t==='tree') {
+    let geo = new THREE.CylinderGeometry(0.3, 0.8, 2, 8);
+    let mat = new THREE.MeshLambertMaterial({color: 0x336633});
+    let o = new THREE.Mesh(geo, mat);
+    o.position.set(x,1,z); o.userData.type = 'tree';
+    scene.add(o); obstacles.push(o);
+  } else if (t==='rock') {
+    let geo = new THREE.DodecahedronGeometry(0.45);
+    let mat = new THREE.MeshLambertMaterial({color: 0x888888});
+    let o = new THREE.Mesh(geo, mat);
+    o.position.set(x,0.45,z); o.userData.type = 'rock';
+    scene.add(o); obstacles.push(o);
+  } else if (t==='ramp') {
+    let geo = new THREE.BoxGeometry(1.6,0.3,2.7);
+    let mat = new THREE.MeshLambertMaterial({color: 0xdeb887});
+    let ramp = new THREE.Mesh(geo, mat);
+    ramp.position.set(x,0.15,z); ramp.rotation.x = -Math.PI/7;
+    ramp.userData.type = 'ramp';
+    scene.add(ramp); ramps.push(ramp);
+  } else if (t==='powerup') {
+    let geo = new THREE.TorusGeometry(0.35,0.13,8,16);
+    let mat = new THREE.MeshLambertMaterial({color: 0x00ffff, emissive: 0x118888});
+    let pow = new THREE.Mesh(geo, mat);
+    pow.position.set(x,1.1,z); pow.userData.type = 'powerup';
+    scene.add(pow); powerups.push(pow);
+  } else if (t==='coin') {
+    let geo = new THREE.TorusGeometry(0.28,0.12,7,16);
+    let mat = new THREE.MeshLambertMaterial({color: 0xffe066, emissive: 0x995500});
+    let coin = new THREE.Mesh(geo, mat);
+    coin.position.set(x,0.77,z); coin.rotation.x = Math.PI/2;
+    coin.userData.type = 'coin';
+    scene.add(coin); coinsArr.push(coin);
+  }
+}
+
+// ====== Saltar / rampes ======
+function canJump() {
+  return !jumping && ramps.some(r=>
+    Math.abs(r.position.z-player.position.z)<1.6 &&
+    Math.abs(r.position.x-player.position.x)<1.1);
+}
+function jump() {
+  jumping = true;
+  jumpV = 0.38;
+  playSound('https://cdn.pixabay.com/audio/2022/10/16/audio_12ce6c2c6e.mp3');
+}
+
+// ====== Bucle d'animació ======
+function animate() {
+  if (!playing) return;
+  requestAnimationFrame(animate);
+
+  if (keyState['a'] || keyState['arrowleft']) move = -0.28;
+  else if (keyState['d'] || keyState['arrowright']) move = 0.28;
+  else if (!mouseActive) move = 0;
+
+  if (flying) {
+    if (keyState['w'] || keyState['arrowup']) moveY = 0.22;
+    else if (keyState['s'] || keyState['arrowdown']) moveY = -0.22;
+    else moveY = 0;
+  } else {
+    moveY = 0;
+    if (jumping) {
+      player.position.y += jumpV;
+      jumpV -= 0.018;
+      if (player.position.y <= 0.6) {
+        player.position.y = 0.6;
+        jumping = false;
+      }
+    }
+  }
+
+  player.position.x += move;
+  player.position.x = Math.max(-3.3, Math.min(3.3, player.position.x));
+  if (flying) {
+    player.position.y += moveY;
+    player.position.y = Math.max(0.6, Math.min(6, player.position.y));
+  }
+
+  camera.position.x = player.position.x;
+  camera.position.y = player.position.y + 0.7;
+  camera.position.z = player.position.z + 0.05;
+  camera.lookAt(player.position.x, player.position.y+0.5, player.position.z-4);
+
+  if (flying) {
+    flyTimer--;
+    if (flyTimer <= 0) { flying = false; updatePowers(); }
+    else updatePowers();
+  }
+
+  let realSpeed = speed * (flying?1.35:1);
+  for (let o of obstacles) o.position.z += realSpeed;
+  for (let r of ramps) r.position.z += realSpeed;
+  for (let p of powerups) p.position.z += realSpeed;
+  for (let c of coinsArr) c.position.z += realSpeed;
+
+  obstacles = obstacles.filter(o=>o.position.z < camera.position.z + 2);
+  ramps = ramps.filter(r=>r.position.z < camera.position.z + 2);
+  powerups = powerups.filter(p=>p.position.z < camera.position.z + 2);
+  coinsArr = coinsArr.filter(c=>c.position.z < camera.position.z + 2);
+
+  if (Math.random() < 0.055) spawnThing();
+
+  if (!flying) {
+    for (let o of obstacles) {
+      if ((Math.abs(o.position.z-player.position.z)<0.85) &&
+          (Math.abs(o.position.x-player.position.x)<0.68) &&
+          (player.position.y < 1.1)) {
+        playSound('https://cdn.pixabay.com/audio/2022/07/26/audio_124b2b1e47.mp3');
+        if(score > getRecord("maxPoints")) setRecord("maxPoints", score);
+        if(coins > getRecord("maxCoins")) setRecord("maxCoins", coins);
+        gameOver();
+        return;
+      }
+    }
+  }
+
+  for (let p of powerups) {
+    if ((Math.abs(p.position.z-player.position.z)<0.9) &&
+        (Math.abs(p.position.x-player.position.x)<0.8)) {
+      boost = true; boostTimer = 120;
+      playSound('https://cdn.pixabay.com/audio/2022/08/20/audio_12c8afc1d3.mp3');
+      scene.remove(p);
+      p.position.z = camera.position.z + 100;
+    }
+  }
+  if (boost) {
+    boostTimer--;
+    if (boostTimer<=0) boost=false;
+  }
+
+  for (let c of coinsArr) {
+    if ((Math.abs(c.position.z-player.position.z)<0.8) &&
+        (Math.abs(c.position.x-player.position.x)<0.68)) {
+      coins++; scene.remove(c);
+      c.position.z = camera.position.z + 100;
+      coinsDiv.innerText = "Monedes: " + coins;
+      playSound('https://cdn.pixabay.com/audio/2022/07/26/audio_122b35c728.mp3');
+      addToBank(1);
+      bankDiv.innerText = "Banca: " + getBank();
+    }
+  }
+
+  score++;
+  speed += 0.00007;
+  scoreDiv.innerText = "Punts: "+score+(flying?" 🧪":"");
+
+  renderer.render(scene, camera);
+}
+
+// ====== Game Over ======
+function gameOver() {
+  playing = false;
+  finalScore.innerHTML = "Punts: " + score + "<br>Monedes recollides: " + coins + "<br>Banca: " + getBank();
+  showOver();
+  bankDiv.innerText = "Banca: " + getBank();
+}
+
+camera.position.set(0,4,10);
+camera.lookAt(0,0,-20);
+setBank(getBank());
+showMenu();
+window.openShop = openShop;
+window.useFlyPotion = useFlyPotion;
+</script>
+</body>
+</html>
